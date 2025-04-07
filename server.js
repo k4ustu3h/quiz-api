@@ -7,11 +7,18 @@ require("dotenv").config();
 const app = express();
 const PORT = 9090;
 const quizRoutes = require("./routes/quizRoutes");
-app.use("/api/questions", quizRoutes);
 
 // Middleware
-app.use(cors());
+const corsOptions = {
+	origin: "*", // Allow requests from your frontend origin
+	methods: "GET,HEAD,PUT,PATCH,POST,DELETE", // Specify allowed HTTP methods
+	credentials: true, // Enable sending cookies across origins if needed
+	optionsSuccessStatus: 204, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+
+app.use(cors(corsOptions)); // Apply CORS middleware with options
 app.use(bodyParser.json());
+app.use("/api/questions", quizRoutes);
 
 // MongoDB Connection
 mongoose
