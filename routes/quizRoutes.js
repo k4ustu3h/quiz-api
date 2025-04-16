@@ -1,11 +1,28 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const Question = require("../models/Questions");
 
-// Get Random Question (default to 1)
 router.get("/random", async (req, res) => {
+	const excludedIds = req.query.excludedIds
+		? JSON.parse(req.query.excludedIds)
+		: [];
+	const objectIdExcludedIds = excludedIds
+		.map((id) => {
+			try {
+				return new mongoose.Types.ObjectId(id);
+			} catch (error) {
+				console.error("Invalid ObjectId:", id);
+				return null;
+			}
+		})
+		.filter((id) => id !== null);
+
 	try {
-		const questions = await Question.aggregate([{ $sample: { size: 1 } }]);
+		const questions = await Question.aggregate([
+			{ $match: { _id: { $nin: objectIdExcludedIds } } },
+			{ $sample: { size: 1 } },
+		]);
 		if (questions && questions.length > 0) {
 			res.json(questions[0]); // Send back a single question object
 		} else {
@@ -16,10 +33,16 @@ router.get("/random", async (req, res) => {
 	}
 });
 
-// Get All Questions (default sort by _id)
 router.get("/", async (req, res) => {
+	const count = parseInt(req.query.count);
+	if (isNaN(count) || count <= 0) {
+		return res.status(400).json({ message: "Invalid question count." });
+	}
+
 	try {
-		const questions = await Question.find().sort({ _id: 1 });
+		const questions = await Question.aggregate([
+			{ $sample: { size: count } },
+		]);
 		res.json(questions);
 	} catch (error) {
 		res.status(500).json({ message: error.message });
