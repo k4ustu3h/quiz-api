@@ -3,28 +3,42 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const Question = require("../models/Questions");
 
+router.get("/categories", async (req, res) => {
+	try {
+		const categories = await Question.distinct("category");
+		res.json(categories);
+	} catch (error) {
+		res.status(500).json({ message: error.message });
+	}
+});
+
 router.get("/random", async (req, res) => {
-	const excludedIds = req.query.excludedIds
-		? JSON.parse(req.query.excludedIds)
-		: [];
+	const { excludedIds, category } = req.query;
 	const objectIdExcludedIds = excludedIds
-		.map((id) => {
-			try {
-				return new mongoose.Types.ObjectId(id);
-			} catch (error) {
-				console.error("Invalid ObjectId:", id);
-				return null;
-			}
-		})
-		.filter((id) => id !== null);
+		? JSON.parse(excludedIds)
+				.map((id) => {
+					try {
+						return new mongoose.Types.ObjectId(id);
+					} catch (error) {
+						console.error("Invalid ObjectId:", id);
+						return null;
+					}
+				})
+				.filter((id) => id !== null)
+		: [];
+
+	const matchStage = { _id: { $nin: objectIdExcludedIds } };
+	if (category && category !== "All") {
+		matchStage.category = category;
+	}
 
 	try {
 		const questions = await Question.aggregate([
-			{ $match: { _id: { $nin: objectIdExcludedIds } } },
+			{ $match: matchStage },
 			{ $sample: { size: 1 } },
 		]);
 		if (questions && questions.length > 0) {
-			res.json(questions[0]); // Send back a single question object
+			res.json(questions[0]);
 		} else {
 			res.status(404).json({ message: "No questions found" });
 		}
@@ -34,15 +48,31 @@ router.get("/random", async (req, res) => {
 });
 
 router.get("/", async (req, res) => {
-	const count = parseInt(req.query.count);
-	if (isNaN(count) || count <= 0) {
-		return res.status(400).json({ message: "Invalid question count." });
+	const { count, category } = req.query;
+	const numCount = parseInt(count);
+	const query = {};
+
+	if (category && category !== "All") {
+		query.category = category;
+	}
+
+	if (isNaN(numCount) || numCount <= 0) {
+		try {
+			const questions = await Question.find(query).sort({ _id: 1 });
+			res.json(questions);
+		} catch (error) {
+			res.status(500).json({ message: error.message });
+		}
+		return;
 	}
 
 	try {
-		const questions = await Question.aggregate([
-			{ $sample: { size: count } },
-		]);
+		const aggregatePipeline = [];
+		if (query.category) {
+			aggregatePipeline.push({ $match: query });
+		}
+		aggregatePipeline.push({ $sample: { size: numCount } });
+		const questions = await Question.aggregate(aggregatePipeline);
 		res.json(questions);
 	} catch (error) {
 		res.status(500).json({ message: error.message });
